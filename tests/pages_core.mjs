@@ -90,3 +90,5 @@ assert.equal(w.parcel(opsId).operations.localTracking,'LOCAL-TEST');
 assert.match(csvExport([w.parcel(opsId)]),/final_mile_number/);
 assert.match(csvExport([w.parcel(opsId)]),/POD-TEST/);
 console.log('Shipment views, movement age, analytics, courier metadata and export checks passed');
+
+assert.equal(lastMovement({...dated,createdAt:new Date(checkTime).toISOString()}),dated.events[0].at);

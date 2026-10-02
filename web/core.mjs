@@ -154,7 +154,7 @@ export function shipmentSummary(p,client=''){
   return [`Parcel update${client&&client!=='—'?' — '+client:''}`,`AWB: ${p.tracking}`,`Courier: ${CARRIERS[p.carrier]}`,`Status: ${STATUSES[p.status]}`,p.eta?'Expected delivery: '+p.eta:'',p.events.find(e=>e.status)?.text||'',p.operations?.deliveredTo?'Received by: '+p.operations.deliveredTo:'',`Carrier tracking: ${carrierURL(p)||'Unavailable'}`].filter(Boolean).join('\n');
 }
 
-export function lastMovement(p){return p.events.filter(e=>e.status&&e.status!=='registered').reduce((latest,e)=>Date.parse(e.at)>Date.parse(latest)?e.at:latest,p.createdAt);}
+export function lastMovement(p){return p.events.filter(e=>e.status&&e.status!=='registered').reduce((latest,e)=>!latest||Date.parse(e.at)>Date.parse(latest)?e.at:latest,'')||p.createdAt;}
 export function shipmentAge(p,time=Date.now()){return Math.max(0,Math.floor((time-Date.parse(p.createdAt))/86400000));}
 export function matchesView(p,view,time=Date.now()){
   const active=!CLOSED.includes(p.status);
