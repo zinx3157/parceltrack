@@ -9,9 +9,10 @@ password-protected tracking portal.
 Built to run on your own PC or server. Tracking requests and configured alerts send
 the relevant shipment/contact information to your chosen carriers and messaging providers.
 
-**Hosting:** the GitHub Pages URL displays documentation. The working app requires the
-Python server (`python run.py --demo` for a local demo); Pages cannot run its API or database.
-Production startup requires a random `SECRET_KEY` of at least 32 characters.
+**Two versions:** the GitHub Pages URL runs a manual, browser-local workspace (see
+“GitHub Pages browser workspace” below). The Python server described here provides
+shared storage, carrier API integrations and authenticated portals. Production server
+startup requires a random `SECRET_KEY` of at least 32 characters.
 
 ---
 
@@ -345,3 +346,21 @@ Natural next steps if you want them (each is a small, self-contained change):
 ParcelDesk — built for your operation. Everything is plain Python + SQLite/PostgreSQL,
 so any developer can maintain it, and it runs fine on a small VPS, a NAS, or a PC in
 the office.
+
+## GitHub Pages browser workspace
+
+The repository root now contains a working browser version at
+**https://zinx3157.github.io/parceltrack/**. It needs no Python server.
+
+It supports manual shipment updates, client records, carton receiving and releases,
+warehouse ageing, Code 128 carton labels, CSV import/export and JSON backup/restore.
+Records are saved in this browser on this device. No demonstration records are inserted.
+Back up regularly: clearing browser site data removes the workspace.
+
+This browser version does **not** offer shared team accounts, secure client portals,
+automatic carrier tracking, or outbound notifications. Carrier buttons open the
+carrier's own tracking website. The Python server version described above remains
+available for those connected capabilities.
+
+Pages source: `index.html`, `web/pages.mjs`, `web/core.mjs`, `web/pages.css` and
+`web/barcode.mjs`. Root-relative hash navigation keeps it working under `/parceltrack/`.
