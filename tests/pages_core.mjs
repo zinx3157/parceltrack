@@ -62,3 +62,14 @@ assert.throws(()=>auto.importRows([{tracking:'GM1234567890123456'},{tracking:'77
 assert.equal(auto.lookup('GM1234567890123456'),null);
 assert.equal(auto.importRows([{tracking:'GM1234567890123456'},{tracking:'EE123456789CN'}]),2);
 console.log('Carrier detection checks passed');
+
+const {followupState,shipmentSummary}=await import('../web/core.mjs');
+const checkTime=new Date(2026,9,2,12).getTime();
+const fp={tracking:'TEST',carrier:'dhl',status:'in_transit',eta:'',events:[],followup:{owner:'Dom',action:'Call courier',due:'2026-10-02',checkedAt:''}};
+assert.equal(followupState(fp,checkTime).priority,2);
+assert.equal(followupState({...fp,eta:'2026-10-01'},checkTime).priority,3);
+assert.equal(followupState({...fp,status:'exception'},checkTime).priority,4);
+assert.equal(followupState({...fp,status:'delivered'},checkTime).priority,0);
+assert.equal(followupState({...fp,followup:{...fp.followup,due:'',checkedAt:new Date(checkTime).toISOString()}},checkTime).priority,0);
+assert.match(shipmentSummary(fp),/Next action: Call courier/);
+console.log('Courier follow-up priority and client update checks passed');
