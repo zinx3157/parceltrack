@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 
+from fastapi import HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -26,20 +27,17 @@ def lookup(db: Session, code: str) -> dict:
     if not normalize_code(code):
         return {"found": False, "reason": "empty"}
 
-    exact = (db.query(Parcel)
-             .options(joinedload(Parcel.client), joinedload(Parcel.receipts))
-             .filter(or_(Parcel.tracking_number == code, Parcel.barcode == code,
-                         Parcel.tracking_number.ilike(code), Parcel.barcode.ilike(code)))
-             .first())
-    if not exact:
-        exact = (db.query(Parcel)
-                 .options(joinedload(Parcel.client), joinedload(Parcel.receipts))
-                 .filter(or_(Parcel.tracking_number.ilike(f"%{code}%"),
-                             Parcel.barcode.ilike(f"%{code}%")))
-                 .first())
-    if not exact:
-        return {"found": False, "reason": "not_found", "code": code,
-                "suggestion": "Add it as a new parcel"}
+    normalized = normalize_code(code)
+    parcels = db.query(Parcel).options(joinedload(Parcel.client), joinedload(Parcel.receipts)).all()
+    matches = [p for p in parcels if normalized in
+               (normalize_code(p.tracking_number), normalize_code(p.barcode))]
+    if not matches:
+        matches = [p for p in parcels if any(normalized in value for value in
+                   (normalize_code(p.tracking_number), normalize_code(p.barcode)) if value)]
+    if len(matches) != 1:
+        return {"found": False, "reason": "ambiguous" if matches else "not_found", "code": code,
+                "suggestion": "Scan the full tracking number" if matches else "Add it as a new parcel"}
+    exact = matches[0]
 
     return parcel_receiving_state(db, exact)
 
@@ -76,6 +74,8 @@ def receive_carton(db: Session, parcel: Parcel, *, user: User | None = None,
                    mark_received: bool = True) -> dict:
     """Record one (or more) cartons arriving. Completes the receipt when the
     expected carton count is reached."""
+    if parcel.released_at:
+        raise HTTPException(409, "Cancel the release before receiving more cartons")
     who = (user.name or user.email) if user else "system"
     expected = max(1, parcel.cartons_expected or 1)
     existing = db.query(func.count(ReceiptLine.id)).filter(
@@ -131,6 +131,8 @@ def receive(db: Session, parcel: Parcel, *, user: User | None = None,
 
 def undo_receive(db: Session, parcel: Parcel) -> Parcel:
     """Clear the receiving record (marked in error)."""
+    if parcel.released_at:
+        raise HTTPException(409, "Cancel the release before clearing the receipt")
     db.query(ReceiptLine).filter(ReceiptLine.parcel_id == parcel.id).delete()
     parcel.received_at = None
     parcel.received_by = ""
@@ -146,6 +148,10 @@ def release(db: Session, parcel: Parcel, *, released_to: str = "", note: str = "
             user: User | None = None) -> Parcel:
     """Hand the goods over to the consignee (leaves the warehouse)."""
     who = (user.name or user.email) if user else "system"
+    if parcel.released_at:
+        raise HTTPException(409, "Parcel already released")
+    if not parcel_receiving_state(db, parcel)["complete"]:
+        raise HTTPException(400, "Receive all expected cartons before release")
     parcel.released_at = utcnow()
     parcel.released_to = (released_to or (parcel.client.name if parcel.client else "")).strip()[:200]
     parcel.released_by = who
@@ -189,7 +195,8 @@ def stock_rows(db: Session, *, query: str = "", location: str = "",
         received = counts.get(parcel.id, 0)
         if not received:
             continue                      # never checked in
-        on_shelf = (now - (parcel.received_at or parcel.created_at)).days if parcel.received_at else 0
+        first_receipt = min([r.received_at for r in parcel.receipts] + ([parcel.received_at] if parcel.received_at else [now]))
+        on_shelf = max(0, (now - first_receipt).days)
         rows.append({
             **parcel_to_dict(parcel),
             "cartons_received": received,

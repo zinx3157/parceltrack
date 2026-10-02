@@ -102,8 +102,8 @@ function makeEnv({ sandboxed }) {
   };
   const opened = [];
   const sandbox = {
-    console, setTimeout, clearTimeout, Date, Math, JSON, Intl, Promise, parseInt, parseFloat, isNaN,
-    URLSearchParams, String, Number, Object, Array, Error, RegExp, Boolean, Map, Set,
+    console, setTimeout: (fn, ms) => ms > 10000 ? 0 : setTimeout(fn, ms), clearTimeout, Date, Math, JSON, Intl, Promise, parseInt, parseFloat, isNaN,
+    URL: { createObjectURL: () => "blob:test-print", revokeObjectURL() {} }, URLSearchParams, String, Number, Object, Array, Error, RegExp, Boolean, Map, Set,
     document,
     navigator: sandboxed ? {} : { clipboard: { writeText: async () => {} } },
     fetch: async (url, opts = {}) => {
@@ -117,7 +117,7 @@ function makeEnv({ sandboxed }) {
       const hit = RESPONSES.find(([re]) => re.test(url));
       const body = hit ? hit[1] : {};
       return { ok: true, status: 200, headers: { get: () => "application/json" },
-               json: async () => JSON.parse(JSON.stringify(body)), text: async () => JSON.stringify(body) };
+               blob: async () => ({}), json: async () => JSON.parse(JSON.stringify(body)), text: async () => JSON.stringify(body) };
     },
     location: sandboxed
       // a sandbox="allow-scripts" iframe: opaque origin ("null") and assign() refused,
@@ -131,7 +131,7 @@ function makeEnv({ sandboxed }) {
   };
   sandbox.localStorage = sandboxed ? { get length() { throw security("localStorage"); } } : storage;
   Object.defineProperty(sandbox, "localStorage", { get: () => (sandboxed ? (() => { throw security("localStorage"); })() : storage) });
-  sandbox.window = { addEventListener() {}, print() {}, open(url) { if (sandboxed) return null; opened.push(url); return { focus() {} }; },
+  sandbox.window = { addEventListener() {}, print() {}, open(url) { if (sandboxed) return null; opened.push(url); return { focus() {}, close() {}, location: "", opener: null }; },
                      localStorage: sandboxed ? undefined : storage, document };
   sandbox.globalThis = sandbox;
   return { sandbox, opened };
@@ -210,7 +210,7 @@ async function exercise(app, label, opened) {
 
   // opening the label/print page must never throw, even with popups blocked
   try {
-    if (app.openPage) app.openPage("/labels/7");
+    if (app.openPage) await app.openPage("/labels/7");
     log(true, `[${label}] opening a label page`);
   } catch (err) { log(false, `[${label}] opening a label page`, `${err.name}: ${err.message}`); }
   // share links must not point at localhost when reached through another hostname

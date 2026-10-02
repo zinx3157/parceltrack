@@ -57,9 +57,7 @@ def carrier_status(settings=None) -> list[dict]:
     settings = settings or default_settings
     out = []
     for name in CARRIERS:
-        adapter = _REAL[name](settings)
-        if settings.demo_mode and name != "manual":
-            adapter = DemoAdapter(settings, carrier=name)
+        adapter = get_adapter(name, settings)
         out.append({
             "name": name,
             "label": CARRIER_LABELS[name],

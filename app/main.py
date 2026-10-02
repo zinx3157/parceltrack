@@ -28,6 +28,8 @@ def _security_preflight() -> None:
     """Warn loudly about weak/default settings so nothing ships insecure by accident."""
     if settings.secret_key in ("change-me-in-production", "change-me-to-a-long-random-string") \
             or len(settings.secret_key) < 32:
+        if not settings.demo_mode:
+            raise RuntimeError("Set SECRET_KEY to a random value of at least 32 characters before starting in production")
         log.warning("SECRET_KEY is short or still the default — set a long random value in .env "
                     "before exposing this server (python -c \"import secrets;"
                     "print(secrets.token_urlsafe(48))\")")
@@ -95,7 +97,8 @@ def create_app() -> FastAPI:
         if request.url.path.startswith("/api/"):
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         # serve the SPA shell for non-API 404s so client-side routes still work
-        if exc.status_code == 404 and (STATIC_DIR / "index.html").exists():
+        if (exc.status_code == 404 and not request.url.path.startswith("/static/")
+                and (STATIC_DIR / "index.html").exists()):
             return FileResponse(STATIC_DIR / "index.html")
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
@@ -108,7 +111,11 @@ def create_app() -> FastAPI:
 
         @app.get("/{full_path:path}", include_in_schema=False)
         def spa(full_path: str):
-            candidate = STATIC_DIR / full_path
+            candidate = (STATIC_DIR / full_path).resolve()
+            if not candidate.is_relative_to(STATIC_DIR.resolve()):
+                return JSONResponse({"detail": "Not found"}, status_code=404)
+            if full_path.startswith("api/") or full_path.startswith("static/"):
+                return JSONResponse({"detail": "Not found"}, status_code=404)
             if candidate.is_file():
                 return FileResponse(candidate)
             return FileResponse(STATIC_DIR / "index.html")

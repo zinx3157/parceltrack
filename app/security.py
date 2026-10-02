@@ -29,11 +29,14 @@ def hash_password(password: str, *, salt: str | None = None) -> str:
 def verify_password(password: str, stored: str) -> bool:
     try:
         algo, salt, digest = stored.split("$", 2)
-    except ValueError:
+    except (ValueError, AttributeError):
         return False
     if algo != "pbkdf2_sha256":
         return False
-    candidate = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 260_000).hex()
+    try:
+        candidate = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 260_000).hex()
+    except (ValueError, TypeError):
+        return False
     return hmac.compare_digest(candidate, digest)
 
 
@@ -42,6 +45,7 @@ def create_token(user: User) -> str:
         "sub": str(user.id),
         "email": user.email,
         "role": user.role,
+        "pv": _password_fingerprint(user.password_hash),
         "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes),
         "iat": datetime.now(timezone.utc),
     }
@@ -93,8 +97,11 @@ def _decode(token: str) -> dict:
         # audience is checked by hand below: staff tokens have no "aud" claim while
         # portal tokens carry aud="client", and PyJWT rejects any aud it cannot
         # match against an expected audience.
-        return jwt.decode(token, settings.secret_key, algorithms=[ALGO],
-                          options={"verify_aud": False})
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGO],
+                             options={"verify_aud": False, "require": ["sub", "exp", "iat"]})
+        if not str(payload["sub"]).isdigit() or int(payload["sub"]) < 1:
+            raise jwt.InvalidTokenError("Invalid subject")
+        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired, please log in again")
     except jwt.PyJWTError:
@@ -116,6 +123,8 @@ def current_user(
     user = db.get(User, int(payload["sub"]))
     if not user or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account disabled")
+    if payload.get("pv") != _password_fingerprint(user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Password changed — please sign in again")
     return user
 
 
