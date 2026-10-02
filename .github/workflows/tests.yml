@@ -18,3 +18,4 @@ jobs:
       - run: python tests/test_audit_regressions.py
       - run: python tests/test_messaging_webhook.py
       - run: node tests/ui_smoke.js
+      - run: node tests/pages_core.mjs
