@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------- secrets
+# Never commit real credentials. .env.example is the template that ships.
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------- data
+# Your live database, backups and exports stay on your server.
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+backups/
+*.xlsx
+*.csv
+
+# ---------------------------------------------------------------- python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------- node / front-end tooling
+node_modules/
+.cache/
+dist/
+build/
+out/
+
+# ---------------------------------------------------------------- logs & runtime
+*.log
+*.pid
+logs/
+.cache/
+
+# ---------------------------------------------------------------- editors & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---------------------------------------------------------------- local packaging
+*.zip
+*.tar.gz
+!deploy/**
