@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {Workspace,KEY,parseCSV,csvExport,shelfDays,validateData} from '../web/core.mjs';
+import {Workspace,KEY,parseCSV,csvExport,shelfDays,validateData,detectCarrier} from '../web/core.mjs';
 import {barcodeBits,barcodeSVG} from '../web/barcode.mjs';
 const memory=()=>{const map=new Map();return {getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};};
 const storage=memory(),w=new Workspace(storage);
@@ -44,3 +44,21 @@ assert.ok(barcodeBits('1234567890').length<barcodeBits('ABCDEFGHIJ').length);
 assert.ok(barcodeSVG('ABC-1001').includes('<rect'));
 assert.throws(()=>barcodeBits('é'),/plain Latin/);
 console.log('Pages core: persistence, warehouse, imports, backup, barcode and security checks passed');
+
+assert.equal(detectCarrier('1z 999AA1 0123456784').carrier,'ups');
+assert.equal(detectCarrier('GM1234567890123456').carrier,'dhlecom');
+assert.equal(detectCarrier('EE123456789CN').carrier,'track17');
+assert.equal(detectCarrier('1234567890').ambiguous,true);
+assert.equal(detectCarrier('771234567890').ambiguous,true);
+assert.equal(detectCarrier('CL123456789FR').ambiguous,true);
+assert.equal(detectCarrier('not-a-tracking-number').carrier,'manual');
+const auto=new Workspace(memory());
+const ups=auto.addParcel({tracking:'1Z999AA10123456784'});
+assert.equal(auto.parcel(ups).carrier,'ups');
+assert.throws(()=>auto.addParcel({tracking:'1234567890'}),/Confirm the carrier/);
+const dhl=auto.addParcel({tracking:'1234567890',carrier:'dhl'});
+assert.equal(auto.parcel(dhl).carrier,'dhl');
+assert.throws(()=>auto.importRows([{tracking:'GM1234567890123456'},{tracking:'771234567890'}]),/Confirm the carrier/);
+assert.equal(auto.lookup('GM1234567890123456'),null);
+assert.equal(auto.importRows([{tracking:'GM1234567890123456'},{tracking:'EE123456789CN'}]),2);
+console.log('Carrier detection checks passed');
