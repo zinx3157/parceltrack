@@ -6,8 +6,12 @@ per parcel, prints barcode labels, tracks what is physically on your warehouse s
 alerts your team and clients by email or WhatsApp/SMS, and gives every client their own
 password-protected tracking portal.
 
-Built to run on your own PC or server — no monthly subscription, your data never leaves
-your machine.
+Built to run on your own PC or server. Tracking requests and configured alerts send
+the relevant shipment/contact information to your chosen carriers and messaging providers.
+
+**Hosting:** the GitHub Pages URL displays documentation. The working app requires the
+Python server (`python run.py --demo` for a local demo); Pages cannot run its API or database.
+Production startup requires a random `SECRET_KEY` of at least 32 characters.
 
 ---
 

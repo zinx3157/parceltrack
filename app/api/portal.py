@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -23,10 +24,10 @@ def portal_login(payload: PortalLogin, db: Session = Depends(get_db)):
     email = (payload.email or "").strip().lower()
     client = None
     if email:
-        client = db.query(Client).filter(Client.email.ilike(email)).first()
+        client = db.query(Client).filter(func.lower(Client.email) == email).first()
         if not client:
             # allow sign-in with the company name too
-            client = db.query(Client).filter(Client.name.ilike(payload.email.strip())).first()
+            client = db.query(Client).filter(func.lower(Client.name) == payload.email.strip().lower()).first()
     if not client or not client.password_hash or not verify_password(payload.password,
                                                                     client.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email or password")

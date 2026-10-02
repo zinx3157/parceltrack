@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -18,7 +19,7 @@ VALID_ROLES = {"admin", "operator", "viewer"}
 
 @router.post("/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email.ilike(payload.email.strip())).first()
+    user = db.query(User).filter(func.lower(User.email) == payload.email.strip().lower()).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email or password")
     if not user.is_active:
@@ -60,7 +61,7 @@ def list_users(_: User = Depends(require_admin), db: Session = Depends(get_db)):
 def create_user(payload: UserCreate, _: User = Depends(require_admin), db: Session = Depends(get_db)):
     if payload.role not in VALID_ROLES:
         raise HTTPException(400, f"role must be one of {sorted(VALID_ROLES)}")
-    if db.query(User).filter(User.email.ilike(payload.email)).first():
+    if db.query(User).filter(func.lower(User.email) == payload.email.strip().lower()).first():
         raise HTTPException(409, "A user with this email already exists")
     user = User(email=payload.email.strip().lower(), name=payload.name,
                 password_hash=hash_password(payload.password), role=payload.role,

@@ -51,7 +51,9 @@ def create_client(payload: ClientCreate, _: User = Depends(require_operator),
                   db: Session = Depends(get_db)):
     if db.query(Client).filter(Client.name.ilike(payload.name.strip())).first():
         raise HTTPException(409, "A client with this name already exists")
-    client = Client(**payload.model_dump(), name=payload.name.strip())
+    data = payload.model_dump()
+    data["name"] = payload.name.strip()
+    client = Client(**data)
     db.add(client)
     db.commit()
     return client_to_dict(client, 0)

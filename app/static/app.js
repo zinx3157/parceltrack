@@ -28,18 +28,30 @@ function currentPath() {
 
 /* Open a server-rendered page (labels, print sheets). A sandboxed preview iframe blocks
    window.open, so fall back to navigating this tab rather than doing nothing. */
-function openPage(url) {
+async function openPage(url) {
   let win = null;
-  try { win = window.open(url, "_blank", "noopener"); } catch (e) { win = null; }
-  if (!win) {
-    try {
-      location.assign(url);
-      toast("Print page opened in this tab — use Back to return", "");
-    } catch (e) {
-      toast(`Open this address: ${url}`, "err");
-    }
-  }
-  return win;
+  try { win = window.open("about:blank", "_blank"); if (win) win.opener = null; } catch {}
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${S.token}` } });
+    if (!res.ok) throw new Error("Cannot open print page — sign in again or retry");
+    const blobUrl = URL.createObjectURL(await res.blob());
+    if (win) win.location = blobUrl;
+    else location.assign(blobUrl);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 600000);
+  } catch (err) { if (win) win.close(); toast(err.message, "err"); }
+}
+
+async function downloadFile(url) {
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${S.token}` } });
+    if (!res.ok) throw new Error("Export failed — sign in again or retry");
+    const blobUrl = URL.createObjectURL(await res.blob());
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = (res.headers.get("content-disposition") || "").match(/filename="([^"\r\n]+)"/)?.[1] || url.split("?")[0].split("/").pop();
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (err) { toast(err.message, "err"); }
 }
 
 function liveOrigin() {
@@ -146,9 +158,12 @@ function toast(message, kind = "") {
   $("#toasts").appendChild(el);
   setTimeout(() => el.remove(), kind === "err" ? 6500 : 4200);
 }
-function copy(text) {
-  navigator.clipboard?.writeText(text).then(() => toast("Copied to clipboard", "ok"),
-    () => prompt("Copy this link:", text));
+async function copy(text) {
+  try {
+    if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+    await navigator.clipboard.writeText(text);
+    toast("Copied to clipboard", "ok");
+  } catch { prompt("Copy this link:", text); }
 }
 
 async function api(path, { method = "GET", body, form, token } = {}) {
@@ -170,11 +185,11 @@ async function api(path, { method = "GET", body, form, token } = {}) {
     try {
       res = await fetch(path, { method, headers, body: payload });
     } catch (err) {
-      if (attempt === 0) { await sleep(400); continue; }
+      if (attempt === 0 && method === "GET") { await sleep(400); continue; }
       throw new Error("Cannot reach the server — check your connection and try again");
     }
     const transient = (res.status === 401 || res.status === 502 || res.status === 503)
-      && attempt === 0 && !isLogin;
+      && attempt === 0 && !isLogin && method === "GET";
     if (!transient) break;
     await sleep(300);
   }
@@ -468,7 +483,7 @@ async function renderDashboard() {
     shell("/", "Dashboard", content, `<button class="btn" id="export-xlsx">${icon("download")} Export</button>`);
     $("#add-parcel").addEventListener("click", () => parcelModal());
     $("#import-btn").addEventListener("click", importModal);
-    $("#export-xlsx").addEventListener("click", () => window.location = "/api/parcels/export.xlsx");
+    $("#export-xlsx").addEventListener("click", () => downloadFile("/api/parcels/export.xlsx"));
     document.querySelectorAll("[data-parcel]").forEach((r) => r.addEventListener("click", () => navigate(`/parcels/${r.dataset.parcel}`)));
     document.querySelector("[data-viewall]")?.addEventListener("click", (e) => { e.preventDefault(); navigate("/parcels"); });
     $("#sync-all").addEventListener("click", async (e) => {
@@ -564,8 +579,8 @@ async function renderParcels() {
     $("#add-parcel").addEventListener("click", () => parcelModal());
     $("#import-btn").addEventListener("click", importModal);
     const exportParams = new URLSearchParams(params); exportParams.delete("limit"); exportParams.delete("offset");
-    $("#export-xlsx").addEventListener("click", () => window.location = "/api/parcels/export.xlsx?" + exportParams);
-    $("#export-csv").addEventListener("click", () => window.location = "/api/parcels/export.csv?" + exportParams);
+    $("#export-xlsx").addEventListener("click", () => downloadFile("/api/parcels/export.xlsx?" + exportParams));
+    $("#export-csv").addEventListener("click", () => downloadFile("/api/parcels/export.csv?" + exportParams));
     document.querySelectorAll("[data-parcel]").forEach((el) => el.addEventListener("click", () => navigate(`/parcels/${el.dataset.parcel}`)));
     document.querySelectorAll("[data-sync]").forEach((el) => el.addEventListener("click", async (e) => {
       e.stopPropagation(); el.disabled = true;
@@ -1107,14 +1122,14 @@ async function renderReports() {
             <button class="btn" id="exp-delivered">Delivered only</button>
           </div>
         </div></div>`;
-    $("#exp-xlsx2").addEventListener("click", () => window.location = "/api/parcels/export.xlsx");
-    $("#exp-open").addEventListener("click", () => window.location = "/api/parcels/export.xlsx?status=open");
-    $("#exp-delivered").addEventListener("click", () => window.location = "/api/parcels/export.xlsx?status=delivered");
+    $("#exp-xlsx2").addEventListener("click", () => downloadFile("/api/parcels/export.xlsx"));
+    $("#exp-open").addEventListener("click", () => downloadFile("/api/parcels/export.xlsx?status=open"));
+    $("#exp-delivered").addEventListener("click", () => downloadFile("/api/parcels/export.xlsx?status=delivered"));
   };
   await load(30);
   $("#days").addEventListener("change", (e) => load(e.target.value));
-  $("#exp-xlsx").addEventListener("click", () => window.location = "/api/parcels/export.xlsx");
-  $("#exp-csv").addEventListener("click", () => window.location = "/api/parcels/export.csv");
+  $("#exp-xlsx").addEventListener("click", () => downloadFile("/api/parcels/export.xlsx"));
+  $("#exp-csv").addEventListener("click", () => downloadFile("/api/parcels/export.csv"));
 }
 
 /* ------------------------------------------------------------------ settings */
@@ -1659,6 +1674,9 @@ async function renderStock() {
       </div></div>`;
 
     shell("/stock", "Warehouse stock", content);
+    $("a[href='/api/receiving/stock.xlsx']")?.addEventListener("click", (e) => {
+      e.preventDefault(); downloadFile("/api/receiving/stock.xlsx");
+    });
     $("#stock-print")?.addEventListener("click", (e) => {
       e.preventDefault();
       openPage(e.currentTarget.getAttribute("href"));

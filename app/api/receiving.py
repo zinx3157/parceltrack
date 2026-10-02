@@ -163,7 +163,8 @@ def stock_xlsx(q: str = "", location: str = "", include_released: bool = False,
         ws.column_dimensions[get_column_letter(col)].width = max(13, min(30, len(label) + 6))
     for r, row in enumerate(rows, start=2):
         for c, (key, _) in enumerate(columns, start=1):
-            ws.cell(row=r, column=c, value=row.get(key))
+            from ..services.reports import safe_cell
+            ws.cell(row=r, column=c, value=safe_cell(row.get(key)))
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
 

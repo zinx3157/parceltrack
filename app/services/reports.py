@@ -87,6 +87,13 @@ def _rows(db: Session, **filters) -> list[dict]:
     return [parcel_to_dict(p) for p in parcels]
 
 
+def safe_cell(value):
+    """Keep untrusted descriptions/references from executing as spreadsheet formulas."""
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
 def export_xlsx(db: Session, **filters) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -110,7 +117,7 @@ def export_xlsx(db: Session, **filters) -> bytes:
             value = item.get(key)
             if isinstance(value, str) and len(value) > 300:
                 value = value[:300]
-            ws.cell(row=row_idx, column=col, value=value)
+            ws.cell(row=row_idx, column=col, value=safe_cell(value))
 
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
@@ -140,5 +147,5 @@ def export_csv(db: Session, **filters) -> bytes:
     writer = csv.writer(buf)
     writer.writerow([label for _, label in EXPORT_COLUMNS])
     for item in _rows(db, **filters):
-        writer.writerow([item.get(key, "") for key, _ in EXPORT_COLUMNS])
+        writer.writerow([safe_cell(item.get(key, "")) for key, _ in EXPORT_COLUMNS])
     return buf.getvalue().encode("utf-8-sig")
