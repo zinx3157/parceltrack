@@ -42,6 +42,29 @@ export function validateData(data){
   }
   return data;
 }
+export function detectCarrier(value){
+  const n=normalize(value);
+  if(!n)return {carrier:'manual',candidates:[],ambiguous:false};
+  const result=(candidates,ambiguous=false)=>({carrier:candidates[0]||'manual',candidates,ambiguous});
+  if(/^1Z[0-9A-Z]{16}$/.test(n)||/^T\d{10}$/.test(n))return result(['ups']);
+  if(/^GM\d{8,30}$/.test(n))return result(['dhlecom']);
+  if(/^[A-Z]{2}\d{9}FR$/.test(n))return result(['colissimo','track17'],true);
+  if(/^(LX|RX|UV)\d{9}DE$/.test(n))return result(['dhlecom','track17'],true);
+  if(/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(n))return result(['track17']);
+  if(/^[5689][A-Z]\d{11}$/.test(n))return result(['colissimo','track17'],true);
+  if(/^\d{10}$/.test(n))return result(['dhl','aramex'],true);
+  if(/^\d{12,15}$/.test(n))return result(['fedex','aramex','colissimo'],true);
+  if(/^\d{18,22}$/.test(n))return result(['fedex','ups','track17'],true);
+  if(/^\d{7,11}$/.test(n))return result(['aramex','manual'],true);
+  return result([]);
+}
+export function resolveCarrier(tracking,choice='auto'){
+  if(choice && choice!=='auto')return choice;
+  const detection=detectCarrier(tracking);
+  if(detection.ambiguous)throw new Error(`Confirm the carrier for ${clean(tracking,100)}: likely ${detection.candidates.map(c=>CARRIERS[c]).join(' / ')}. Choose a carrier in the form or import default.`);
+  return detection.carrier;
+}
+
 export class Workspace {
   constructor(storage){
     this.storage=storage;this.raw=storage.getItem(KEY);
@@ -95,7 +118,7 @@ export class Workspace {
 export function makeParcel(input,data,existingId=''){
   const tracking=clean(input.tracking,100);if(!normalize(tracking))throw new Error('Enter a tracking number');
   if(data.parcels.some(p=>p.id!==existingId&&normalize(p.tracking)===normalize(tracking)))throw new Error('This tracking number already exists');
-  const carrier=input.carrier||'manual',status=input.status||'registered';if(!Object.hasOwn(CARRIERS,carrier)||!Object.hasOwn(STATUSES,status))throw new Error('Invalid carrier or status');
+  const carrier=resolveCarrier(tracking,input.carrier||'auto'),status=input.status||'registered';if(!Object.hasOwn(CARRIERS,carrier)||!Object.hasOwn(STATUSES,status))throw new Error('Invalid carrier or status');
   const clientId=input.clientId||'';if(clientId&&!data.clients.some(c=>c.id===clientId))throw new Error('Choose an existing client');
   return {id:existingId||uid(),tracking,carrier,status,clientId,reference:clean(input.reference,120),description:clean(input.description,500),origin:clean(input.origin,120),destination:clean(input.destination,120),notes:clean(input.notes,1000),location:clean(input.location,120),eta:dateOnly(input.eta),cartons:positiveInt(input.cartons===''||input.cartons==null?1:input.cartons),createdAt:now(),receipts:[],release:null,events:[{at:now(),status,text:'Parcel registered',source:'manual'}]};
 }
