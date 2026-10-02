@@ -32,6 +32,7 @@ export function validateData(data){
     parcelIds.add(p.id);numbers.add(normalize(p.tracking));
     if(!Object.hasOwn(STATUSES,p.status)||!Object.hasOwn(CARRIERS,p.carrier))throw new Error('Invalid parcel status or carrier');
     positiveInt(p.cartons);dateOnly(p.eta);
+    if(p.followup){for(const k of ['owner','action','due','checkedAt'])if(typeof p.followup[k]!=='string'||p.followup[k].length>1000)throw new Error('Invalid follow-up');dateOnly(p.followup.due);if(p.followup.checkedAt&&!validIso(p.followup.checkedAt))throw new Error('Invalid check date');}
     for(const key of ['tracking','reference','description','origin','destination','notes','clientId','location'])if(typeof p[key]!=='string'||p[key].length>2000)throw new Error('Invalid parcel details');
     if(p.clientId && !clientIds.has(p.clientId))throw new Error('A parcel refers to a missing client');
     if(!validIso(p.createdAt)||!Array.isArray(p.receipts)||!Array.isArray(p.events))throw new Error('Invalid parcel history');
@@ -136,3 +137,18 @@ export function parseCSV(text){
 export function csvExport(parcels,clients=[]){const columns=['tracking_number','carrier','status','client','reference','description','origin','destination','cartons_expected','cartons_received','storage_location','eta','released_to'];
   const safe=v=>{let s=String(v??'');if(/^[\s]*[=+@-]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
   const lines=parcels.map(p=>[p.tracking,p.carrier,p.status,clients.find(c=>c.id===p.clientId)?.name||'',p.reference,p.description,p.origin,p.destination,p.cartons,p.receipts.length,p.location,p.eta,p.release?.to||'']);return '\uFEFF'+[columns,...lines].map(r=>r.map(safe).join(',')).join('\r\n');}
+
+export function followupState(p,time=Date.now()){
+  if(CLOSED.includes(p.status))return {priority:0,label:'Closed'};
+  const dt=new Date(time),today=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  const due=p.followup?.due;
+  if(['exception','customs'].includes(p.status))return {priority:4,label:p.status==='customs'?'Clearance follow-up':'Delivery exception'};
+  if(p.eta&&p.eta<today)return {priority:3,label:'Delivery overdue'};
+  if(due&&due<=today)return {priority:2,label:due<today?'Follow-up overdue':'Follow up today'};
+  const checked=p.followup?.checkedAt;
+  if(!checked||time-Date.parse(checked)>=86400000)return {priority:1,label:checked?'Check due':'Never checked'};
+  return {priority:0,label:'Checked today'};
+}
+export function shipmentSummary(p,client=''){
+  return [`Parcel update${client?' — '+client:''}`,`AWB: ${p.tracking}`,`Courier: ${CARRIERS[p.carrier]}`,`Status: ${STATUSES[p.status]}`,p.eta?'Expected delivery: '+p.eta:'',p.events.find(e=>e.status)?.text||'',p.followup?.action?'Next action: '+p.followup.action:'',`Carrier tracking: ${carrierURL(p)||'Unavailable'}`].filter(Boolean).join('\n');
+}
